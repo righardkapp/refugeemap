@@ -128,7 +128,7 @@
 
 /* ---- Tooltip card ---- */
 .dm-refugee-tooltip {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
   display: none;
   background: var(--dm-surface);
@@ -253,7 +253,23 @@
   d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json').then(us => {
     const states = topojson.feature(us, us.objects.states).features;
 
-    svg.selectAll('path').data(states).join('path')
+    function renderTooltip(clientX, clientY, name, v) {
+      let left = clientX + 14;
+      let top = clientY + 14;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (left > vw - 160) left = clientX - 160;
+      if (top > vh - 80) top = clientY - 90;
+      tooltip
+        .style('display', 'block')
+        .style('left', left + 'px')
+        .style('top', top + 'px')
+        .html(
+          '<div class="t-name">' + name + '</div>' +
+          '<div class="t-value">' + (v === undefined ? 'No arrivals' : v.toLocaleString() + ' arrivals') + '</div>'
+        );
+    }
+
+    const statePaths = svg.selectAll('path').data(states).join('path')
       .attr('d', path)
       .attr('stroke', '#fff')
       .attr('stroke-width', 0.75)
@@ -263,25 +279,31 @@
       })
       .on('mousemove', function (event, d) {
         const v = values[d.properties.name];
-        const wrap = document.querySelector('.dm-refugee-map-wrap');
-        const rect = wrap.getBoundingClientRect();
-        let left = event.clientX - rect.left + 14;
-        let top = event.clientY - rect.top + 14;
-        if (left > rect.width - 140) left = event.clientX - rect.left - 150;
-        tooltip
-          .style('display', 'block')
-          .style('left', left + 'px')
-          .style('top', top + 'px')
-          .html(
-            '<div class="t-name">' + d.properties.name + '</div>' +
-            '<div class="t-value">' + (v === undefined ? 'No arrivals' : v.toLocaleString() + ' arrivals') + '</div>'
-          );
+        renderTooltip(event.clientX, event.clientY, d.properties.name, v);
         d3.select(this).attr('stroke-width', 1.5).attr('stroke', '#171717');
       })
       .on('mouseleave', function () {
         tooltip.style('display', 'none');
         d3.select(this).attr('stroke-width', 0.75).attr('stroke', '#fff');
-      });
+      })
+      .on('touchstart', function (event, d) {
+        event.preventDefault();
+        statePaths.attr('stroke-width', 0.75).attr('stroke', '#fff');
+        const v = values[d.properties.name];
+        const touch = event.touches[0];
+        renderTooltip(touch.clientX, touch.clientY, d.properties.name, v);
+        d3.select(this).attr('stroke-width', 1.5).attr('stroke', '#171717');
+      }, { passive: false });
+
+    // Tapping anywhere outside a state (or the tooltip itself) dismisses it
+    document.addEventListener('touchstart', function (event) {
+      const withinMap = event.target.closest('#dm-refugee-map');
+      const withinTooltip = event.target.closest('.dm-refugee-tooltip');
+      if (!withinMap && !withinTooltip) {
+        tooltip.style('display', 'none');
+        statePaths.attr('stroke-width', 0.75).attr('stroke', '#fff');
+      }
+    }, { passive: true });
 
     svg.selectAll('text.figure').data(states).join('text')
       .attr('class', 'figure')
